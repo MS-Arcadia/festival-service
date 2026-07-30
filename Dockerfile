@@ -35,10 +35,10 @@ USER 65532:65532
 ARG VERSION=dev
 ENV SERVICE_VERSION=${VERSION}
 
-EXPOSE 8091
+EXPOSE 8089
 
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=3 \
-  CMD ["python", "-c", "import os,urllib.request,sys; port=os.environ.get('HTTP_PORT','8091'); sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{port}/readyz', timeout=3).status==200 else 1)"]
+  CMD ["python", "-c", "import os,urllib.request,sys; port=os.environ.get('HTTP_PORT','8089'); sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{port}/readyz', timeout=3).status==200 else 1)"]
 
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${HTTP_PORT:-8091} --no-access-log"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${HTTP_PORT:-8089} --no-access-log"]

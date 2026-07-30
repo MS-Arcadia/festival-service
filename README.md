@@ -93,11 +93,33 @@ none of this service's business.
 ### The `audience` field on `FestivalStarted`
 
 Notification's translator reads an `audience` field — a list of user ids to
-notify. This service has no user directory (that would mean calling Auth or
-Profile synchronously for every user on the platform on every festival start),
-so it is published as an empty list. This is a deliberate, documented gap: a
-future targeted-marketing feature can populate it without a schema change on
-either side.
+notify — and treats an empty/missing list as "nobody to notify". A festival
+going ACTIVE is platform-wide (requirement 1.9), so the audience has to be
+everyone, and that means asking the service that owns the user directory.
+
+This service now calls `auth-profile-service`'s internal
+`GET /v1/admin/users/ids?status=ACTIVE` synchronously from
+`FestivalService.start` (see `app/adapters/outbound/auth_profile.py`,
+`app/application/festival_service.py`'s `_audience` helper) with a short-lived
+service JWT, the same symmetric-secret pattern order-service uses to call
+catalog-service (`order-service/app/adapters/outbound/catalog.py`). Configure
+the target with `AUTH_PROFILE_BASE_URL` / `AUTH_PROFILE_TIMEOUT_SECONDS`.
+
+That endpoint did not previously exist on auth-profile-service; it was added
+(`app/presentation/rest/role_admin_controller.py`'s `GET /admin/users/ids`,
+SUPPORT/ADMIN-only, backed by `ListActiveUserIdsUseCase`) as part of this fix,
+since restricting an internal, service-to-service directory lookup to the same
+role bar as the platform's other bulk user-directory routes was the smallest
+consistent change.
+
+The call degrades gracefully rather than blocking a festival from starting: a
+timeout, an unreachable auth-profile-service, or a non-2xx response is logged
+as a warning and the event still publishes, just with an empty audience — a
+missed notification pass is recoverable, an admin unable to start a festival
+because a downstream service is down is not. If this ever needs to change (for
+example, to retry via an outbox instead of a synchronous call so a temporary
+auth-profile-service outage cannot cause a notification gap at all), that is
+the next thing to revisit here — not a return to a hardcoded empty list.
 
 ## Running it
 
@@ -105,6 +127,6 @@ either side.
 make install   # venv + dependencies
 make test      # the full suite — no database or broker needed
 make lint      # ruff check + format check
-make run       # against the infra compose stack, on :8091
+make run       # against the infra compose stack, on :8089
 make docker    # build the image
 ```

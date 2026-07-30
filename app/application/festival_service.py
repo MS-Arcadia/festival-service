@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from app.application import events as ev
 from app.application.dto import (
     AddGameRequest,
@@ -14,9 +16,12 @@ from app.application.ports import (
     EventPublisher,
     FestivalRepository,
     IdFactory,
+    UserDirectory,
 )
 from app.domain.festival import Festival, FestivalState
 from app.platform import errors
+
+logger = logging.getLogger(__name__)
 
 
 class FestivalService:
@@ -25,12 +30,12 @@ class FestivalService:
         *,
         uow,
         festivals: FestivalRepository,
-
         catalog_games,
         promotions,
         publisher: EventPublisher,
         clock: Clock,
         new_id: IdFactory,
+        users: UserDirectory | None = None,
     ) -> None:
         self._uow = uow
         self._festivals = festivals
@@ -39,7 +44,10 @@ class FestivalService:
         self._publisher = publisher
         self._clock = clock
         self._new_id = new_id
-
+        # Optional on purpose: tests and any caller that does not care about the
+        # notification audience get the old, honest behaviour (an empty list) instead of
+        # a None-typed crash, rather than being forced to wire an HTTP gateway.
+        self._users = users
 
     async def create(self, *, admin_id: str, request: CreateFestivalRequest) -> FestivalDetailView:
         now = self._clock.now()
@@ -139,9 +147,9 @@ class FestivalService:
             )
         return await self._detail(festival_id)
 
-
     async def start(self, *, festival_id: str, admin_id: str) -> FestivalDetailView:
         now = self._clock.now()
+        audience = await self._audience()
         async with self._uow.begin() as session:
             festival = await self._load(festival_id)
             festival.start(now=now)
@@ -158,10 +166,29 @@ class FestivalService:
                     "ends_at": festival.ends_at.isoformat(),
                     "game_ids": list(festival.games.keys()),
                     "started_by": admin_id,
-                    "audience": [],
+                    "audience": audience,
                 },
             )
         return await self._detail(festival_id)
+
+    async def _audience(self) -> list[str]:
+        """Every user id `FestivalStarted` should notify.
+
+        A festival is platform-wide (requirement 1.9), so "the audience" is "everyone
+        active" — fetched from auth-profile-service, the owner of the user directory.
+        Looked up outside the transaction: it is a read against another service, not
+        something that needs to roll back with the festival's own state change.
+
+        No directory configured, or the lookup fails, both degrade to an empty list with
+        a warning logged rather than blocking the festival from starting — a missed
+        notification pass is recoverable, a festival admins cannot start is not.
+        """
+        if self._users is None:
+            logger.warning(
+                "no user directory is configured; publishing FestivalStarted with an empty audience"
+            )
+            return []
+        return await self._users.active_user_ids()
 
     async def end(self, *, festival_id: str, admin_id: str) -> FestivalDetailView:
         now = self._clock.now()
@@ -201,7 +228,6 @@ class FestivalService:
             )
         return await self._detail(festival_id)
 
-
     async def get(self, festival_id: str) -> FestivalDetailView:
         return await self._detail(festival_id)
 
@@ -213,7 +239,6 @@ class FestivalService:
         return Page(
             items=[FestivalView.of(f) for f in festivals], total=total, limit=limit, offset=offset
         )
-
 
     async def _load(self, festival_id: str) -> Festival:
         festival = await self._festivals.get_for_update(festival_id)

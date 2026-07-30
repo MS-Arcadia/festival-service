@@ -201,3 +201,15 @@ class RecordingPublisher:
 
     def count(self, event_type: str) -> int:
         return sum(1 for e in self.events if e["event_type"] == event_type)
+
+
+class FakeUserDirectory:
+    """Stands in for auth-profile-service's `/v1/admin/users/ids`."""
+
+    def __init__(self, user_ids: list[str] | None = None) -> None:
+        self.user_ids = list(user_ids) if user_ids is not None else ["user-1", "user-2"]
+        self.calls = 0
+
+    async def active_user_ids(self) -> list[str]:
+        self.calls += 1
+        return self.user_ids

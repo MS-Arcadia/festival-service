@@ -32,7 +32,7 @@ fmt:
 	$(VENV)/bin/ruff check --fix .
 
 run: 
-	$(VENV)/bin/uvicorn app.main:app --reload --port 8091
+	$(VENV)/bin/uvicorn app.main:app --reload --port 8089
 
 docker: 
 	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE):$(VERSION) .

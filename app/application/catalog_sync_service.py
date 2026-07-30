@@ -33,7 +33,6 @@ class CatalogSyncService:
         self._publisher = publisher
         self._clock = clock
 
-
     async def game_published(self, payload: dict) -> None:
         game_id = _require(payload, "game_id")
         async with self._uow.begin():
@@ -97,7 +96,6 @@ class CatalogSyncService:
                     updated_at=self._clock.now(),
                 )
             )
-
 
     async def promotion_event(self, event_type: str, payload: dict) -> None:
         """Record what Catalog reported about a promotion.

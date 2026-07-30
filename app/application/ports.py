@@ -61,6 +61,25 @@ class PromotionRepository(Protocol):
     async def list_for_festival(self, festival_id: str) -> list[PromotionSnapshot]: ...
 
 
+class UserDirectory(Protocol):
+    """The platform's user directory, for events that are meant for everyone.
+
+    A festival going ACTIVE is platform-wide (requirement 1.9) — every user is the
+    audience, not a subscriber list this service owns. Getting "everyone" means asking
+    the service that owns the user directory, auth-profile-service, rather than this
+    service trying to keep its own copy of every account on the platform.
+    """
+
+    async def active_user_ids(self) -> list[str]:
+        """Every currently-active user id, for a platform-wide broadcast.
+
+        Failure here must never block a festival from starting: it degrades to
+        `FestivalService` publishing an empty audience and logging a warning, since a
+        missed notification pass is recoverable and a stuck festival is not.
+        """
+        ...
+
+
 class EventPublisher(Protocol):
     """Appends an event to the outbox inside the caller's transaction.
 

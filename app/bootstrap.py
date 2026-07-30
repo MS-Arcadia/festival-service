@@ -11,6 +11,7 @@ from sqlalchemy import text
 
 from app.adapters.inbound.consumer import Handlers
 from app.adapters.inbound.rest import festivals
+from app.adapters.outbound.auth_profile import HttpAuthProfileDirectory
 from app.adapters.outbound.publisher import OutboxEventPublisher
 from app.adapters.outbound.repositories import (
     PostgresCatalogGameRepository,
@@ -38,7 +39,6 @@ MIGRATIONS = Path(__file__).resolve().parent.parent / "migrations"
 
 
 class SystemClock:
-
     def now(self) -> datetime:
         return datetime.now(UTC)
 
@@ -68,6 +68,16 @@ def build(config: Config | None = None) -> FastAPI:
     publisher = OutboxEventPublisher(cfg)
     clock = SystemClock()
 
+    users = HttpAuthProfileDirectory(
+        base_url=cfg.auth_profile_base_url,
+        jwt_secret=cfg.jwt_secret,
+        jwt_algorithm=cfg.jwt_algorithm,
+        jwt_issuer=cfg.jwt_issuer,
+        jwt_audience=cfg.jwt_audience,
+        service_name=cfg.service_name,
+        timeout=cfg.auth_profile_timeout_seconds,
+    )
+
     festival_service = FestivalService(
         uow=uow,
         festivals=festival_repo,
@@ -76,6 +86,7 @@ def build(config: Config | None = None) -> FastAPI:
         publisher=publisher,
         clock=clock,
         new_id=new_id,
+        users=users,
     )
     catalog_sync_service = CatalogSyncService(
         uow=uow,
@@ -110,7 +121,7 @@ def build(config: Config | None = None) -> FastAPI:
     if producer is not None:
 
         async def check_outbox() -> None:
-            backlog = await dispatcher.backlog()  
+            backlog = await dispatcher.backlog()
             if backlog > 5_000:
                 raise RuntimeError(f"outbox backlog is {backlog}")
 
@@ -131,7 +142,7 @@ def build(config: Config | None = None) -> FastAPI:
                     partitions=cfg.kafka_topic_partitions,
                     replication=cfg.kafka_topic_replication,
                 )
-            await dispatcher.start()  
+            await dispatcher.start()
 
             nonlocal consumer
             consumer = kafka.Consumer(
@@ -160,6 +171,7 @@ def build(config: Config | None = None) -> FastAPI:
                 await dispatcher.stop()
             if producer is not None:
                 await producer.stop()
+            await users.aclose()
             await engine.dispose()
             logger.info("festival-service stopped")
 

@@ -1,4 +1,4 @@
-rom __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime
 from typing import Annotated
@@ -28,8 +28,6 @@ class MoneyView(BaseModel):
         return cls(**money.to_wire())
 
 
-
-
 class CreateFestivalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -50,8 +48,6 @@ class AddGameRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     game_id: Annotated[str, StringConstraints(min_length=1, max_length=64)]
-
-
 
 
 class FestivalGameView(BaseModel):

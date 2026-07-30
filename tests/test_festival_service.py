@@ -21,6 +21,7 @@ from tests.fakes import (
     FakeFestivalRepository,
     FakePromotionRepository,
     FakeUnitOfWork,
+    FakeUserDirectory,
     FixedClock,
     RecordingPublisher,
     sequential_ids,
@@ -35,6 +36,7 @@ def harness():
     promotions = FakePromotionRepository(uow)
     publisher = RecordingPublisher()
     clock = FixedClock()
+    users = FakeUserDirectory()
     service = FestivalService(
         uow=uow,
         festivals=festivals,
@@ -43,8 +45,9 @@ def harness():
         publisher=publisher,
         clock=clock,
         new_id=sequential_ids("fest"),
+        users=users,
     )
-    return service, festivals, catalog_games, publisher, clock, uow
+    return service, festivals, catalog_games, publisher, clock, uow, users
 
 
 async def _create(service, clock, **overrides):
@@ -71,14 +74,14 @@ async def _seed_game(catalog_games, uow, clock, **overrides) -> None:
 
 
 async def test_creating_a_festival_publishes_festival_created(harness):
-    service, _, _, publisher, clock, _ = harness
+    service, _, _, publisher, clock, _, _ = harness
     detail = await _create(service, clock)
     assert detail.state == "DRAFT"
     assert publisher.count(FESTIVAL_CREATED) == 1
 
 
 async def test_adding_a_game_requires_it_to_be_known_to_this_service(harness):
-    service, _, _, _, clock, _ = harness
+    service, _, _, _, clock, _, _ = harness
     detail = await _create(service, clock)
     with pytest.raises(errors.AppError) as exc:
         await service.add_game(
@@ -88,7 +91,7 @@ async def test_adding_a_game_requires_it_to_be_known_to_this_service(harness):
 
 
 async def test_an_unpublished_game_cannot_be_added(harness):
-    service, _, catalog_games, _, clock, uow = harness
+    service, _, catalog_games, _, clock, uow, _ = harness
     detail = await _create(service, clock)
     await _seed_game(catalog_games, uow, clock, published=False)
     with pytest.raises(errors.AppError) as exc:
@@ -99,7 +102,7 @@ async def test_an_unpublished_game_cannot_be_added(harness):
 
 
 async def test_a_published_game_can_be_added_and_the_event_carries_its_title(harness):
-    service, _, catalog_games, publisher, clock, uow = harness
+    service, _, catalog_games, publisher, clock, uow, _ = harness
     detail = await _create(service, clock)
     await _seed_game(catalog_games, uow, clock)
     detail = await service.add_game(
@@ -110,10 +113,10 @@ async def test_a_published_game_can_be_added_and_the_event_carries_its_title(har
     assert added["payload"]["game_id"] == "game-1"
 
 
-async def test_starting_publishes_festival_started_with_the_audience_hook_empty(harness):
-    """Notification's translator already reads ``audience``; this pins the empty
-    default until something upstream can populate it."""
-    service, _, catalog_games, publisher, clock, uow = harness
+async def test_starting_publishes_festival_started_with_the_full_active_audience(harness):
+    """A festival going ACTIVE is platform-wide (requirement 1.9): the audience is
+    whatever auth-profile-service reports as active, not an empty placeholder."""
+    service, _, catalog_games, publisher, clock, uow, users = harness
     detail = await _create(service, clock)
     await _seed_game(catalog_games, uow, clock)
     await service.add_game(
@@ -123,12 +126,29 @@ async def test_starting_publishes_festival_started_with_the_audience_hook_empty(
     detail = await service.start(festival_id=detail.id, admin_id="admin-1")
     assert detail.state == "ACTIVE"
     started = publisher.last(FESTIVAL_STARTED)
-    assert started["payload"]["audience"] == []
+    assert started["payload"]["audience"] == users.user_ids
+    assert users.calls == 1
     assert started["payload"]["game_ids"] == ["game-1"]
 
 
+async def test_starting_falls_back_to_an_empty_audience_with_no_directory_configured(harness):
+    """A caller that does not wire a `UserDirectory` (e.g. an older test harness) gets
+    the historical empty-list behaviour rather than an attribute error."""
+    service, _, catalog_games, publisher, clock, uow, _ = harness
+    service._users = None
+    detail = await _create(service, clock)
+    await _seed_game(catalog_games, uow, clock)
+    await service.add_game(
+        festival_id=detail.id, admin_id="admin-1", request=AddGameRequest(game_id="game-1")
+    )
+    clock.advance(days=1)
+    await service.start(festival_id=detail.id, admin_id="admin-1")
+    started = publisher.last(FESTIVAL_STARTED)
+    assert started["payload"]["audience"] == []
+
+
 async def test_a_festival_with_no_games_refuses_to_start(harness):
-    service, _, _, _, clock, _ = harness
+    service, _, _, _, clock, _, _ = harness
     detail = await _create(service, clock)
     with pytest.raises(errors.AppError) as exc:
         await service.start(festival_id=detail.id, admin_id="admin-1")
@@ -136,7 +156,7 @@ async def test_a_festival_with_no_games_refuses_to_start(harness):
 
 
 async def test_ending_a_festival_publishes_festival_ended(harness):
-    service, _, catalog_games, publisher, clock, uow = harness
+    service, _, catalog_games, publisher, clock, uow, _ = harness
     detail = await _create(service, clock)
     await _seed_game(catalog_games, uow, clock)
     await service.add_game(
@@ -149,7 +169,7 @@ async def test_ending_a_festival_publishes_festival_ended(harness):
 
 
 async def test_cancelling_a_draft_festival_publishes_festival_cancelled(harness):
-    service, _, _, publisher, clock, _ = harness
+    service, _, _, publisher, clock, _, _ = harness
     detail = await _create(service, clock)
     detail = await service.cancel(festival_id=detail.id, admin_id="admin-1")
     assert detail.state == "CANCELLED"
@@ -157,7 +177,7 @@ async def test_cancelling_a_draft_festival_publishes_festival_cancelled(harness)
 
 
 async def test_listing_can_be_filtered_by_state(harness):
-    service, _, _, _, clock, _ = harness
+    service, _, _, _, clock, _, _ = harness
     await _create(service, clock, name="A")
     cancelled = await _create(service, clock, name="B")
     await service.cancel(festival_id=cancelled.id, admin_id="admin-1")

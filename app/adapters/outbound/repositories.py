@@ -8,7 +8,7 @@ duration of a transaction.
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.adapters.outbound.models import (
     CatalogGameRow,
@@ -172,13 +172,21 @@ class PostgresFestivalRepository:
         self, *, limit: int, offset: int, state: FestivalState | None = None
     ) -> tuple[list[Festival], int]:
         session = current_session()
-        stmt = select(FestivalRow)
+        filters = []
         if state is not None:
-            stmt = stmt.where(FestivalRow.state == str(state))
-        stmt = stmt.order_by(FestivalRow.starts_at.desc(), FestivalRow.id)
+            filters.append(FestivalRow.state == str(state))
 
-        total = len((await session.execute(stmt)).scalars().all())
-        rows = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
+        count_stmt = select(func.count()).select_from(FestivalRow).where(*filters)
+        total = (await session.execute(count_stmt)).scalar_one()
+
+        stmt = (
+            select(FestivalRow)
+            .where(*filters)
+            .order_by(FestivalRow.starts_at.desc(), FestivalRow.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        rows = (await session.execute(stmt)).scalars().all()
         return [_to_festival(r) for r in rows], total
 
     async def find_by_game(self, game_id: str) -> list[Festival]:

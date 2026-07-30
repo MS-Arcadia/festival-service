@@ -24,7 +24,6 @@ class FestivalState(StrEnum):
     CANCELLED = "CANCELLED"
 
 
-
 _EDITABLE = frozenset({FestivalState.DRAFT, FestivalState.ACTIVE})
 
 
@@ -64,7 +63,6 @@ class Festival:
     games: dict[str, FestivalGame] = field(default_factory=dict)
     version: int = 0
 
-
     @classmethod
     def create(
         cls,
@@ -96,7 +94,6 @@ class Festival:
             created_by=created_by,
             created_at=now,
         )
-
 
     def reschedule(self, *, starts_at: datetime, ends_at: datetime, now: datetime) -> None:
         """Change the window. Only while nothing has actually started.
@@ -138,7 +135,6 @@ class Festival:
             )
         del self.games[game_id]
 
-
     def start(self, *, now: datetime) -> None:
         """Open the festival. Requirement 1.9's admin action, and what
         ``FestivalStarted`` reports."""
@@ -177,7 +173,6 @@ class Festival:
             )
         self.state = FestivalState.CANCELLED
         self.ended_at = now
-
 
     def _require_editable(self, action: str) -> None:
         if self.state not in _EDITABLE:
