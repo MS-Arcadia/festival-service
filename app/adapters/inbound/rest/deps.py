@@ -13,10 +13,15 @@ from fastapi import Depends, Query, Request
 
 from app.application.festival_service import FestivalService
 from app.platform.auth import Principal, current_principal
+from app.platform.cache import Cache
 
 
 def festivals(request: Request) -> FestivalService:
     return request.app.state.festival_service
+
+
+def cache(request: Request) -> Cache:
+    return request.app.state.cache
 
 
 class Pagination:
@@ -37,5 +42,6 @@ class Pagination:
 
 
 FestivalServiceDep = Annotated[FestivalService, Depends(festivals)]
+CacheDep = Annotated[Cache, Depends(cache)]
 PageDep = Annotated[Pagination, Depends(Pagination)]
 CallerDep = Annotated[Principal, Depends(current_principal)]

@@ -40,6 +40,12 @@ class Config(BaseConfig):
 
     cors_origins: CsvList = Field(default_factory=lambda: ["http://localhost:3000"])
 
+    # --- read-through cache ------------------------------------------------
+    # Empty disables it outright — public browsing still works with no Redis
+    # running, just slower under repeated load.
+    redis_url: str = ""
+    cache_ttl_seconds: int = 30
+
 
 @lru_cache
 def get_config() -> Config:

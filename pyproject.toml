@@ -24,6 +24,7 @@ dependencies = [
     # (app/adapters/outbound/auth_profile.py) uses it for the synchronous call to
     # auth-profile-service that fills FestivalStarted's audience.
     "httpx>=0.27,<1.0",
+    "redis>=5.0,<6.0",
 ]
 
 [project.optional-dependencies]

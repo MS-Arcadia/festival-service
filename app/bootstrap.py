@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
+import redis.asyncio as redis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -24,6 +25,7 @@ from app.config import Config, get_config
 from app.platform import health, kafka, migrate
 from app.platform import logging as logx
 from app.platform.auth import Verifier
+from app.platform.cache import Cache
 from app.platform.db import UnitOfWork, create_engine, create_session_factory, strip_asyncpg_dsn
 from app.platform.events import new_id
 from app.platform.http import (
@@ -61,6 +63,9 @@ def build(config: Config | None = None) -> FastAPI:
     )
     sessions = create_session_factory(engine)
     uow = UnitOfWork(sessions)
+
+    redis_client = redis.from_url(cfg.redis_url, decode_responses=True) if cfg.redis_url else None
+    cache = Cache(redis_client, prefix=cfg.service_name, default_ttl=cfg.cache_ttl_seconds)
 
     festival_repo = PostgresFestivalRepository()
     catalog_game_repo = PostgresCatalogGameRepository()
@@ -118,6 +123,15 @@ def build(config: Config | None = None) -> FastAPI:
 
     probes.add("postgres", check_database, critical=True)
 
+    if redis_client is not None:
+
+        async def check_cache() -> None:
+            await redis_client.ping()
+
+        # Non-critical: the cache fails open, so losing Redis makes repeated
+        # public reads slower, never unavailable.
+        probes.add("cache", check_cache, critical=False)
+
     if producer is not None:
 
         async def check_outbox() -> None:
@@ -172,6 +186,8 @@ def build(config: Config | None = None) -> FastAPI:
             if producer is not None:
                 await producer.stop()
             await users.aclose()
+            if redis_client is not None:
+                await redis_client.aclose()
             await engine.dispose()
             logger.info("festival-service stopped")
 
@@ -198,6 +214,7 @@ def build(config: Config | None = None) -> FastAPI:
     )
     app.state.festival_service = festival_service
     app.state.catalog_sync_service = catalog_sync_service
+    app.state.cache = cache
     app.state.uow = uow
     app.state.sessions = sessions
 

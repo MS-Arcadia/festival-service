@@ -12,8 +12,9 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
+from fastapi.encoders import jsonable_encoder
 
-from app.adapters.inbound.rest.deps import CallerDep, FestivalServiceDep, PageDep
+from app.adapters.inbound.rest.deps import CacheDep, CallerDep, FestivalServiceDep, PageDep
 from app.application.dto import (
     AddGameRequest,
     CreateFestivalRequest,
@@ -36,15 +37,27 @@ admin_only = [Depends(require(Role.ADMIN))]
 @router.get("", response_model=Page[FestivalView])
 async def list_festivals(
     service: FestivalServiceDep,
+    cache: CacheDep,
     page: PageDep,
     state: Annotated[FestivalState | None, Query()] = None,
 ) -> Page[FestivalView]:
-    return await service.list(limit=page.limit, offset=page.offset, state=state)
+    key = f"list:{page.limit}:{page.offset}:{state}"
+    return await cache.get_or_set(
+        key, lambda: _as_json(service.list(limit=page.limit, offset=page.offset, state=state))
+    )
 
 
 @router.get("/{festival_id}", response_model=FestivalDetailView)
-async def get_festival(service: FestivalServiceDep, festival_id: str) -> FestivalDetailView:
-    return await service.get(festival_id)
+async def get_festival(
+    service: FestivalServiceDep, cache: CacheDep, festival_id: str
+) -> FestivalDetailView:
+    return await cache.get_or_set(festival_id, lambda: _as_json(service.get(festival_id)))
+
+
+async def _as_json(awaitable):  # type: ignore[no-untyped-def]
+    """A cache stores JSON, not a Pydantic model — this is the one place that
+    makes the two agree, so every route above stays free of the distinction."""
+    return jsonable_encoder(await awaitable)
 
 
 # --- admin writes ----------------------------------------------------------
