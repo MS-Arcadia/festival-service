@@ -218,14 +218,14 @@ def build(config: Config | None = None) -> FastAPI:
     app.state.uow = uow
     app.state.sessions = sessions
 
-    if cfg.cors_origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=cfg.cors_origins,
-            allow_credentials=True,
-            allow_methods=["GET", "POST", "PATCH", "DELETE"],
-            allow_headers=["Authorization", "Content-Type", "X-Correlation-ID"],
-        )
+    # if cfg.cors_origins:
+    #     app.add_middleware(
+    #         CORSMiddleware,
+    #         allow_origins=cfg.cors_origins,
+    #         allow_credentials=True,
+    #         allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    #         allow_headers=["Authorization", "Content-Type", "X-Correlation-ID"],
+    #     )
 
     install_middleware(app, service=cfg.service_name)
     install_error_handlers(app)

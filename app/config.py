@@ -38,7 +38,7 @@ class Config(BaseConfig):
             f"{self.topic_game_events}.dlq",
         ]
 
-    cors_origins: CsvList = Field(default_factory=lambda: ["http://localhost:3000"])
+    # cors_origins: CsvList = Field(default_factory=lambda: ["http://localhost:3000"])
 
     # --- read-through cache ------------------------------------------------
     # Empty disables it outright — public browsing still works with no Redis
