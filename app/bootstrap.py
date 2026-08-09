@@ -7,7 +7,6 @@ from pathlib import Path
 
 import redis.asyncio as redis
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.adapters.inbound.consumer import Handlers
@@ -217,15 +216,6 @@ def build(config: Config | None = None) -> FastAPI:
     app.state.cache = cache
     app.state.uow = uow
     app.state.sessions = sessions
-
-    # if cfg.cors_origins:
-    #     app.add_middleware(
-    #         CORSMiddleware,
-    #         allow_origins=cfg.cors_origins,
-    #         allow_credentials=True,
-    #         allow_methods=["GET", "POST", "PATCH", "DELETE"],
-    #         allow_headers=["Authorization", "Content-Type", "X-Correlation-ID"],
-    #     )
 
     install_middleware(app, service=cfg.service_name)
     install_error_handlers(app)

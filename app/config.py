@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field
-
-from app.platform.config import BaseConfig, CsvList
+from app.platform.config import BaseConfig
 
 
 class Config(BaseConfig):
@@ -37,8 +35,6 @@ class Config(BaseConfig):
             f"{self.topic_festival_events}.dlq",
             f"{self.topic_game_events}.dlq",
         ]
-
-    # cors_origins: CsvList = Field(default_factory=lambda: ["http://localhost:3000"])
 
     # --- read-through cache ------------------------------------------------
     # Empty disables it outright — public browsing still works with no Redis
