@@ -69,6 +69,63 @@ tests/                      Domain, application, and HTTP-authorisation tests
                              against in-memory fakes — no database needed
 ```
 
+## Use cases
+
+| # | Use case | Actor | Notes |
+|---|---|---|---|
+| 1 | Create a festival | Admin | Name, description, window |
+| 2 | Reschedule a festival | Admin | Before it starts |
+| 3 | Add a game to a festival | Admin | The game must exist and be published |
+| 4 | Remove a game from a festival | Admin | |
+| 5 | Start a festival | Admin | Explicit, not clock-driven — a demo cannot wait for a start time to arrive |
+| 6 | End a festival | Admin | Discounts stop applying |
+| 7 | Cancel a festival | Admin | Distinct from ending: it never ran |
+| 8 | Browse festivals | Anyone | Public, cached briefly |
+| 9 | Read one festival with its games | Anyone | Public |
+
+The discount itself is **not** owned here. A festival proposes one; Catalog holds the
+promotion and the developer approves or rejects it. Requirement 1.9 splits the decision
+deliberately — Support proposes, the developer decides — and this service owns only the
+proposing half.
+
+## How it talks to the rest of the platform
+
+```mermaid
+graph LR
+    gw["api-gateway"] -->|"REST /festivals/*"| f["festival-service"]
+    f -->|"REST: platform-wide audience<br/>self-signed SERVICE token"| auth["auth-profile-service"]
+    cat["catalog-service"] -->|"game-events:<br/>published, withdrawn,<br/>price changed"| f
+    f -->|"festival-events:<br/>FestivalStarted, FestivalEnded,<br/>DiscountApplied"| topic(("festival-events"))
+    topic --> notif["notification-service"]
+
+    classDef s fill:#2d7dd2,stroke:#1a5a9e,color:#fff
+    classDef t fill:#f5a623,stroke:#c4841c,color:#000
+    class gw,f,auth,cat,notif s
+    class topic t
+```
+
+| Direction | Peer | Why |
+|---|---|---|
+| Calls out (sync) | auth-profile-service | The audience for a platform-wide announcement when a festival starts |
+| Consumes | `game-events` | A read-model of which games exist, are published, and at what price — so adding a game to a festival does not need a synchronous call |
+| Publishes | `festival-events` | Notification announces a festival to every active user |
+
+## Infrastructure
+
+| Concern | Choice |
+|---|---|
+| Language | Python 3.13, FastAPI |
+| Storage | PostgreSQL — `arcadia_festival`, SQLAlchemy 2 async + Alembic |
+| Messaging | Kafka, transactional outbox |
+| Cache | Redis — a 30-second cache on the public listing, with no invalidation on write |
+| Port | 8089 |
+| Deployment | 1 replica, HPA to 4 at 70% CPU |
+
+The listing cache has no invalidation, which is a deliberate trade rather than an
+oversight: a newly created festival can take up to 30 seconds to appear publicly, and the
+alternative — invalidation across every listing key — is machinery to keep correct for a
+page that changes a few times a season.
+
 ## Events
 
 Published on `festival-events`:
